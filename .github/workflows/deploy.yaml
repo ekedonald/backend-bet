@@ -21,75 +21,74 @@ jobs:
         echo "${{ secrets.KEY_PEM }}" > esdeado.pem
         chmod 400 esdeado.pem
         
-        - name: Deploy to instances
-        run: |
-          INSTANCES=$(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --query 'Reservations[*].Instances[*].[PublicIpAddress]' --output text)
-          for ip in $INSTANCES; do
+    - name: Deploy to instances
+      run: |
+        INSTANCES=$(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --query 'Reservations[*].Instances[*].[PublicIpAddress]' --output text)
+        for ip in $INSTANCES; do
             echo "Deploying to $ip"
-            ssh -o StrictHostKeyChecking=no -i pairbet247.pem ubuntu@$ip '
-              sudo apt update
-              sudo apt -y install php8.1-curl php php-cli php-fpm php-mysql php-xml php-mbstring composer nginx supervisor
-      
-              if dpkg -l | grep -q apache2; then
-                  echo "Apache2 is installed. Stopping and disabling the service..."
-                  sudo systemctl stop apache2
-                  sudo systemctl disable apache2
-              fi
-      
-              git clone https://${{ secrets.GPAT }}@github.com/stephennwachukwu/int-Pairbet.git
-              cd int-Pairbet/backend
-              composer update
-              composer dump-autoload
-              cp .env.example .env
-              php artisan key:generate
-      
-              cat << EOF | sudo tee /etc/supervisor/conf.d/pairbet-worker.conf
-            [program:pairbet-app]
-            process_name=%(program_name)s
-            command=php artisan serve --port=8000
-            directory=/home/ubuntu/int-Pairbet/backend
-            autostart=true
-            autorestart=true
-            user=ubuntu
-            redirect_stderr=true
-            stdout_logfile=/home/ubuntu/int-Pairbet/backend/storage/logs/supervisor.log
-            EOF
+            ssh -o StrictHostKeyChecking=no -i esdeado.pem ubuntu@$ip '
+            sudo apt update
+            sudo apt -y install php8.1-curl php php-cli php-fpm php-mysql php-xml php-mbstring composer nginx supervisor
             
-                    sudo supervisorctl reread
-                    sudo supervisorctl update
+            if dpkg -l | grep -q apache2; then
+                echo "Apache2 is installed. Stopping and disabling the service..."
+                sudo systemctl stop apache2
+                sudo systemctl disable apache2
+            fi
             
-                    sudo rm /etc/nginx/sites-available/default
-                    sudo rm /etc/nginx/sites-enabled/default
+            git clone https://${{ secrets.GPAT }}@github.com/stephennwachukwu/int-Pairbet.git
+            cd int-Pairbet/backend
+            composer update
+            composer dump-autoload
+            cp .env.example .env
+            php artisan key:generate
             
-                    cat << EOF | sudo tee /etc/nginx/conf.d/pairbet.conf
-            server {
-                listen 80;
-                server_name _;
+            sudo tee /etc/supervisor/conf.d/pairbet-worker.conf << EOF
+        [program:pairbet-app]
+        process_name=%(program_name)s
+        command=php artisan serve --port=8000
+        directory=/home/ubuntu/int-Pairbet/backend
+        autostart=true
+        autorestart=true
+        user=ubuntu
+        redirect_stderr=true
+        stdout_logfile=/home/ubuntu/int-Pairbet/backend/storage/logs/supervisor.log
+        EOF
             
-                access_log /home/ubuntu/int-Pairbet/backend/storage/logs/nginx-access.log;
-                error_log /home/ubuntu/int-Pairbet/backend/storage/logs/nginx-error.log;
+            sudo supervisorctl reread
+            sudo supervisorctl update
             
-                location / {
-                    proxy_pass http://127.0.0.1:8000;
-                    proxy_http_version 1.1;
-                    proxy_set_header Upgrade \$http_upgrade;
-                    proxy_set_header Connection "upgrade";
-                    proxy_set_header Host \$host;
-                    proxy_cache_bypass \$http_upgrade;
-                    proxy_set_header X-Real-IP \$remote_addr;
-                    proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
-                    proxy_set_header X-Forwarded-Proto \$scheme;
-                }
+            sudo rm /etc/nginx/sites-available/default
+            sudo rm /etc/nginx/sites-enabled/default
+            
+            sudo tee /etc/nginx/conf.d/pairbet.conf << EOF
+        server {
+            listen 80;
+            server_name _;
+
+            access_log /home/ubuntu/int-Pairbet/backend/storage/logs/nginx-access.log;
+            error_log /home/ubuntu/int-Pairbet/backend/storage/logs/nginx-error.log;
+
+            location / {
+                proxy_pass http://127.0.0.1:8000;
+                proxy_http_version 1.1;
+                proxy_set_header Upgrade \$http_upgrade;
+                proxy_set_header Connection "upgrade";
+                proxy_set_header Host \$host;
+                proxy_cache_bypass \$http_upgrade;
+                proxy_set_header X-Real-IP \$remote_addr;
+                proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+                proxy_set_header X-Forwarded-Proto \$scheme;
             }
-            EOF
+        }
+        EOF
             
-                    sudo nginx -t
-                    sudo systemctl restart nginx
-                    sudo systemctl enable nginx
-                    sudo systemctl status nginx
-                    '
-                done
-      
+            sudo nginx -t
+            sudo systemctl restart nginx
+            sudo systemctl enable nginx
+            sudo systemctl status nginx
+            '
+        done
 
     - name: Cleanup
       run: rm -f esdeado.pem
