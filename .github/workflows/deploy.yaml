@@ -18,15 +18,15 @@ jobs:
         
     - name: Store PEM key
       run: |
-        echo "${{ secrets.KEY_PEM }}" > pairbet247.pem
-        chmod 400 pairbet247.pem
+        echo "${{ secrets.KEY_PEM }}" > esdeado.pem
+        chmod 400 esdeado.pem
         
     - name: Deploy to instances
       run: |
         INSTANCES=$(aws ec2 describe-instances --filters "Name=instance-state-name,Values=running" --query 'Reservations[*].Instances[*].[PublicIpAddress]' --output text)
         for ip in $INSTANCES; do
           echo "Deploying to $ip"
-          ssh -o StrictHostKeyChecking=no -i pairbet247.pem ubuntu@$ip '
+          ssh -o StrictHostKeyChecking=no -i esdeado.pem ubuntu@$ip '
             sudo apt update
             sudo apt -y install php8.1-curl php php-cli php-fpm php-mysql php-xml php-mbstring composer nginx supervisor
             
@@ -90,4 +90,4 @@ jobs:
         done
 
     - name: Cleanup
-      run: rm -f paribet247.pem
+      run: rm -f esdeado.pem
